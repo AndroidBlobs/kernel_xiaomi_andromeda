@@ -1,4 +1,5 @@
-/* Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2019 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -34,7 +35,7 @@ static void cam_node_print_ctx_state(
 		spin_lock_bh(&ctx->lock);
 		CAM_INFO(CAM_CORE,
 			"[%s][%d] : state=%d, refcount=%d, active_req_list=%d, pending_req_list=%d, wait_req_list=%d, free_req_list=%d",
-			ctx->dev_name,
+			ctx->dev_name ? ctx->dev_name : "null",
 			i, ctx->state,
 			atomic_read(&(ctx->refcount.refcount.refs)),
 			list_empty(&ctx->active_req_list),
@@ -119,7 +120,7 @@ static int __cam_node_handle_acquire_dev(struct cam_node *node,
 		goto free_ctx;
 	}
 
-	CAM_DBG(CAM_CORE, "[%s] Acquire ctx_id %d",
+	CAM_INFO(CAM_CORE, "[%s] Acquire ctx_id %d",
 		node->name, ctx->ctx_id);
 
 	return 0;
@@ -155,12 +156,6 @@ static int __cam_node_handle_acquire_hw_v1(struct cam_node *node,
 		return -EINVAL;
 	}
 
-	if (strcmp(node->name, ctx->dev_name)) {
-		CAM_ERR(CAM_CORE, "node name %s dev name:%s not matching",
-			node->name, ctx->dev_name);
-		return -EINVAL;
-	}
-
 	rc = cam_context_handle_acquire_hw(ctx, acquire);
 	if (rc) {
 		CAM_ERR(CAM_CORE, "Acquire device failed for node %s",
@@ -168,7 +163,7 @@ static int __cam_node_handle_acquire_hw_v1(struct cam_node *node,
 		return rc;
 	}
 
-	CAM_DBG(CAM_CORE, "[%s] Acquire ctx_id %d",
+	CAM_INFO(CAM_CORE, "[%s] Acquire ctx_id %d",
 		node->name, ctx->ctx_id);
 
 	return 0;
@@ -197,12 +192,6 @@ static int __cam_node_handle_start_dev(struct cam_node *node,
 	if (!ctx) {
 		CAM_ERR(CAM_CORE, "Can not get context for handle %d",
 			start->dev_handle);
-		return -EINVAL;
-	}
-
-	if (strcmp(node->name, ctx->dev_name)) {
-		CAM_ERR(CAM_CORE, "node name %s dev name:%s not matching",
-			node->name, ctx->dev_name);
 		return -EINVAL;
 	}
 
@@ -239,12 +228,6 @@ static int __cam_node_handle_stop_dev(struct cam_node *node,
 		return -EINVAL;
 	}
 
-	if (strcmp(node->name, ctx->dev_name)) {
-		CAM_ERR(CAM_CORE, "node name %s dev name:%s not matching",
-			node->name, ctx->dev_name);
-		return -EINVAL;
-	}
-
 	rc = cam_context_handle_stop_dev(ctx, stop);
 	if (rc)
 		CAM_ERR(CAM_CORE, "Stop failure for node %s", node->name);
@@ -275,12 +258,6 @@ static int __cam_node_handle_config_dev(struct cam_node *node,
 	if (!ctx) {
 		CAM_ERR(CAM_CORE, "Can not get context for handle %d",
 			config->dev_handle);
-		return -EINVAL;
-	}
-
-	if (strcmp(node->name, ctx->dev_name)) {
-		CAM_ERR(CAM_CORE, "node name %s dev name:%s not matching",
-			node->name, ctx->dev_name);
 		return -EINVAL;
 	}
 
@@ -317,12 +294,6 @@ static int __cam_node_handle_flush_dev(struct cam_node *node,
 		return -EINVAL;
 	}
 
-	if (strcmp(node->name, ctx->dev_name)) {
-		CAM_ERR(CAM_CORE, "node name %s dev name:%s not matching",
-			node->name, ctx->dev_name);
-		return -EINVAL;
-	}
-
 	rc = cam_context_handle_flush_dev(ctx, flush);
 	if (rc)
 		CAM_ERR(CAM_CORE, "Flush failure for node %s", node->name);
@@ -356,12 +327,6 @@ static int __cam_node_handle_release_dev(struct cam_node *node,
 		return -EINVAL;
 	}
 
-	if (strcmp(node->name, ctx->dev_name)) {
-		CAM_ERR(CAM_CORE, "node name %s dev name:%s not matching",
-			node->name, ctx->dev_name);
-		return -EINVAL;
-	}
-
 	if (ctx->state > CAM_CTX_UNINIT && ctx->state < CAM_CTX_STATE_MAX) {
 		rc = cam_context_handle_release_dev(ctx, release);
 		if (rc)
@@ -384,7 +349,7 @@ destroy_dev_hdl:
 	else
 		ctx->dev_hdl = -1;
 
-	CAM_DBG(CAM_CORE, "[%s] Release ctx_id=%d, refcount=%d",
+	CAM_INFO(CAM_CORE, "[%s] Release ctx_id=%d, refcount=%d",
 		node->name, ctx->ctx_id,
 		atomic_read(&(ctx->refcount.refcount.refs)));
 
@@ -417,17 +382,11 @@ static int __cam_node_handle_release_hw_v1(struct cam_node *node,
 		return -EINVAL;
 	}
 
-	if (strcmp(node->name, ctx->dev_name)) {
-		CAM_ERR(CAM_CORE, "node name %s dev name:%s not matching",
-			node->name, ctx->dev_name);
-		return -EINVAL;
-	}
-
 	rc = cam_context_handle_release_hw(ctx, release);
 	if (rc)
 		CAM_ERR(CAM_CORE, "context release failed node %s", node->name);
 
-	CAM_DBG(CAM_CORE, "[%s] Release ctx_id=%d, refcount=%d",
+	CAM_INFO(CAM_CORE, "[%s] Release ctx_id=%d, refcount=%d",
 		node->name, ctx->ctx_id,
 		atomic_read(&(ctx->refcount.refcount.refs)));
 
@@ -551,7 +510,7 @@ int cam_node_shutdown(struct cam_node *node)
 
 	for (i = 0; i < node->ctx_size; i++) {
 		if (node->ctx_list[i].dev_hdl > 0) {
-			CAM_DBG(CAM_CORE,
+			CAM_INFO(CAM_CORE,
 				"Node [%s] invoking shutdown on context [%d]",
 				node->name, i);
 			rc = cam_context_shutdown(&(node->ctx_list[i]));
