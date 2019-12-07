@@ -1,4 +1,5 @@
 /* Copyright (c) 2018-2019 The Linux Foundation. All rights reserved.
+ * Copyright (C) 2019 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1547,6 +1548,15 @@ static int qg_get_battery_capacity(struct qpnp_qg *chip, int *soc)
 	return 0;
 }
 
+static int qg_get_battery_capacity_real(struct qpnp_qg *chip, int *soc)
+{
+	mutex_lock(&chip->soc_lock);
+	*soc = chip->msoc;
+	mutex_unlock(&chip->soc_lock);
+
+	return 0;
+}
+
 static int qg_get_charge_counter(struct qpnp_qg *chip, int *charge_counter)
 {
 	int rc, cc_soc = 0;
@@ -1800,6 +1810,9 @@ static int qg_psy_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CAPACITY:
 		rc = qg_get_battery_capacity(chip, &pval->intval);
 		break;
+	case POWER_SUPPLY_PROP_REAL_CAPACITY:
+		rc = qg_get_battery_capacity_real(chip, &pval->intval);
+		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		rc = qg_get_battery_voltage(chip, &pval->intval);
 		break;
@@ -1920,6 +1933,7 @@ static int qg_property_is_writeable(struct power_supply *psy,
 
 static enum power_supply_property qg_psy_props[] = {
 	POWER_SUPPLY_PROP_CAPACITY,
+	POWER_SUPPLY_PROP_REAL_CAPACITY,
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_VOLTAGE_OCV,
@@ -2861,13 +2875,11 @@ use_pon_ocv:
 			goto done;
 		}
 
-		if ((full_soc > cutoff_soc) && (pon_soc > cutoff_soc)) {
+		if ((full_soc > cutoff_soc) && (pon_soc > cutoff_soc))
 			soc = DIV_ROUND_UP(((pon_soc - cutoff_soc) * 100),
 						(full_soc - cutoff_soc));
-			soc = CAP(0, 100, soc);
-		} else {
+		else
 			soc = pon_soc;
-		}
 
 		qg_dbg(chip, QG_DEBUG_PON, "v_float=%d v_cutoff=%d FULL_SOC=%d CUTOFF_SOC=%d PON_SYS_SOC=%d pon_soc=%d\n",
 			chip->bp.float_volt_uv, chip->dt.vbatt_cutoff_mv * 1000,
